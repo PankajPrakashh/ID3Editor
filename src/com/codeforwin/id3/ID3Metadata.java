@@ -19,33 +19,22 @@ package com.codeforwin.id3;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
-
+import java.util.Arrays;
+import static com.codeforwin.id3.ID3.*;
 
 /**
  * <code>ID3Metadata</code> class represents a valid ID3 media meta-data format. 
  * 
  * @author Pankaj Prakash
- * @version 1.0
+ * @version 0.9
  */
 public class ID3Metadata {
-    public final static String ENCODING_ASCII       = "ISO-8859-1";
-    public final static String ENCODING_UTF8        = "UTF-8";
-    public final static String ENCODING_UTF16       = "UTF-16";
-    public final static String ENCODING_UTF16BE     = "UTF-16BE";
-    public final static String ENCODING_UTF16LE     = "UTF-16LE";
-    
-    public final static int    FLAG_UNSYNCRONIZATION= 0x80; // 10000000
-    public final static int    FLAG_EXTENDED_HEADER = 0x40; // 01000000
-    public final static int    FLAG_EXPERIMENTAL    = 0x20; // 00100000
-    
-    public final static String ID3_IDENTIFIER       = "ID3";
-    
     /**
-     * Media file whose meta-data is to be fetched.
+     * Media file whose metadata is to be fetched.
      */
     private final File file;
     
@@ -80,14 +69,9 @@ public class ID3Metadata {
     private boolean experimentalTag;
     
     /**
-     * True if the file contains ID3 tag.
-     */
-    private boolean validID3Tag;
-    
-    /**
      * List of all frames in the current ID3 tag.
      */
-    private ArrayList<Frame> frames;
+    private ArrayList<Frame> frameList;
     
     
     /**
@@ -97,7 +81,6 @@ public class ID3Metadata {
      */
     public ID3Metadata(File file) {
         this.file                   = file;
-        this.validID3Tag            = false;
         
         this.unsynchronizationSet   = false;
         this.experimentalTag        = false;
@@ -107,7 +90,7 @@ public class ID3Metadata {
         this.minorVersion           = 0;
         this.size                   = 0;
         
-        this.frames                 = new ArrayList<>();
+        this.frameList				= new ArrayList<>();
     }
     
     /**
@@ -125,10 +108,10 @@ public class ID3Metadata {
      * ID3 tag otherwise returns null.
      * @see isValidID3Tag()
      */
-    public static ID3Metadata parseMedia(File file) {
+    public static ID3Metadata parseMedia(File file) throws IOException {
         ID3Metadata id3 = null;
 
-        byte headerInfo[] = new byte[10];
+        byte headerInfo[] = new byte[HEADER_SIZE];
 
         String identifier = "";
 
@@ -137,19 +120,24 @@ public class ID3Metadata {
             stream.read(headerInfo, 0, headerInfo.length);
 
             // Get the first three bytes
-            identifier = new String(headerInfo, 0, 3, ENCODING_ASCII);
+            identifier = new String(headerInfo, 0, 3, ENCODING_ISO_8859_1);
         } catch (IOException ex) {
-            System.out.println("com.codeforwin.id3.ID3Metadata.parseMedia() - " + ex.getMessage());
-            return null;
+        	IOException exception;
+        	
+        	if(ex instanceof FileNotFoundException) {
+        		exception = new FileNotFoundException("File not found");
+        	} else {
+        		exception = new IOException("Unable to read media.");
+        	}
+        	
+        	throw exception;
         }
         
         /**
          * If current tag is valid ID3 tag read its header information.
          */
-        if (identifier.equals(ID3_IDENTIFIER)) {
+        if (identifier.equals(ID3_TAG_IDENTIFIER)) {
             id3 = new ID3Metadata(file);
-            
-            id3.validID3Tag = true;
             
             // 4th byte contains the major version information
             id3.majorVersion = headerInfo[3];
@@ -163,8 +151,8 @@ public class ID3Metadata {
 
             // Set various flag informations
             id3.unsynchronizationSet= ((flag & FLAG_UNSYNCRONIZATION) == FLAG_UNSYNCRONIZATION);
-            id3.extendedHeaderAdded = ((flag & FLAG_EXTENDED_HEADER ) == FLAG_EXTENDED_HEADER);
-            id3.experimentalTag     = ((flag & FLAG_EXPERIMENTAL    ) == FLAG_EXPERIMENTAL);
+            id3.extendedHeaderAdded = ((flag & FLAG_EXTENDED_HEADER ) == FLAG_EXTENDED_HEADER );
+            id3.experimentalTag     = ((flag & FLAG_EXPERIMENTAL    ) == FLAG_EXPERIMENTAL	  );
 
             /**
              * Reads the size of the id3 tag Size is defined by 4 bytes. The
@@ -172,7 +160,7 @@ public class ID3Metadata {
              * The first bit of each bit is set to 0 and is ignored. Hence the
              * total bits used is 28 bits. Sizes must be calculated accordingly.
              */
-            id3.size = (headerInfo[6] << 21) | (headerInfo[7] << 14) | (headerInfo[8] << 7) | headerInfo[9];
+            id3.size = unpackInteger(Arrays.copyOfRange(headerInfo, 6, 10));
             
             // Read extended header if extended header flag is set
             if(id3.extendedHeaderAdded)
@@ -186,26 +174,26 @@ public class ID3Metadata {
      * Gets, all frames associated with the current ID3Metadata.
      * @return An array of Frames associated with the current frame.
      */
-    public Frame[] getAllFrames() {
+    public Frame[] getAllFrames() throws IOException {
         Frame[] allFrames;
         
         /** 
          * If list of frames have already been parsed.
          */
-        if(frames.size() >= 1) {
-            allFrames = new Frame[frames.size()];
-            allFrames = frames.toArray(allFrames);
+        if(frameList.size() >= 1) {
+            allFrames = new Frame[frameList.size()];
+            allFrames = frameList.toArray(allFrames);
             
             return allFrames;
         }
         
         try (FileInputStream stream = new FileInputStream(file)) {
 
-            /* 11 byte of the ID3 metadata */
-            int index = 10;
+            /* 11 byte of the ID3 meta data */
+            int index = HEADER_SIZE;
             
-            // Skip the first 10 header bytes of the ID3 metadata
-            stream.skip(10);
+            // Skip the first 10 header bytes of the ID3 meta data
+            stream.skip(HEADER_SIZE);
 
             while (index < size) {
                 /**
@@ -214,26 +202,26 @@ public class ID3Metadata {
                  * Next  4 bytes represents the size of frame data.
                  * Last  2 bytes represents the flags used in the frame.
                  */
-                byte[] header   = new byte[10];
+                byte[] header   = new byte[HEADER_SIZE];
                 
                 // Read header information from the stream
                 stream.read(header, 0, header.length);
                 
                 // Skip the extra padding 
                 if(header[0] == 0) {
-                    index += 10;
+                    index += HEADER_SIZE;
                     continue;
                 }
                 
-                String headerID = new String(header, 0, 4, ENCODING_ASCII);
-                int dataSize    = ByteBuffer.wrap(header, 4, 4).getInt();
+                String frameID	= getString(header, 0, 4, ENCODING_ISO_8859_1);
+                int dataSize    = getInteger(header, 4);
                 int flag1       = header[8];
                 int flag2       = header[9];
                 
                 byte[] data     = new byte[dataSize];
                 
                 // Move the current reader index to data
-                index += 10;
+                index += HEADER_SIZE;
                 
                 // Read the data of current frame
                 stream.read(data, 0, data.length);
@@ -244,22 +232,30 @@ public class ID3Metadata {
                 /**
                  * Create a new instance of Frame, add with the frames list
                  */
-                Frame newFrame = new Frame(headerID, dataSize, data);
-                newFrame.setFlags(flag1, flag2);
-                frames.add(newFrame);
+                Frame newFrame;
+                if(frameID.startsWith("T") || frameID.startsWith("W")) {
+                	newFrame = new TextFrame(frameID, dataSize, data);
+                } else if (frameID.equals("APIC")) {
+                	newFrame = new ImageFrame(dataSize, data, true);
+                } else if (frameID.contains("COMM")) {
+                	newFrame = new CommentFrame(frameID, dataSize, data);
+                } else {
+                	newFrame = new Frame(frameID, dataSize, data);
+                }
                 
+                newFrame.setFlags(flag1, flag2);
+                frameList.add(newFrame);
             }
             
-        } catch (IndexOutOfBoundsException | IOException ex) {
-            System.out.println("com.codeforwin.id3.ID3Metadata.getAllFrames()");
         }
         
         // Convert the list of frames to array type.
-        allFrames = new Frame[frames.size()];
-        allFrames = frames.toArray(allFrames);
+        allFrames = new Frame[frameList.size()];
+        allFrames = frameList.toArray(allFrames);
         
         return allFrames;
     }
+    
     
     /**
      * Adds a new Frame to the ID3 tag. 
@@ -268,65 +264,34 @@ public class ID3Metadata {
     public void addFrame(Frame frame) {
         // Check null frames
         if(frame != null) {
-            frames.add(frame);
+            frameList.add(frame);
         }
     }
+    
     
     /**
      * Adds a list of Frames to the ID3 tag.
      * @param frames Array of frames to be added.
      */
-    public void addFrames(Frame [] frames) {
-        
+    public void addFrames(Frame[] frames) {
         // Check null
         if(frames != null) {
             for(Frame frame : frames) {
                 if(frame != null) {
-                    this.frames.add(frame);
+                    this.frameList.add(frame);
                 }
             }
         }
     }
     
+    
     /**
-     * Saves the new updated ID3 meta data.
+     * Saves the new updated ID3 meta data to media file.
+     * @throws IOException
      */
-    public void saveID3Metadata() {
-        // Calculate the total size of frame
-        int framesSize = 0;
-        for(Frame frame : frames) {
-            // Frame data size + header size
-            framesSize += frame.getSize() + 10;
-        }
-        
-        /**
-         * Create a valid ID3 header tag
-         */
-        byte frameData[] = new byte[framesSize + 10];
-        
-        System.arraycopy(ID3_IDENTIFIER.getBytes(), 0, frameData, 0, 3);
-        frameData[3] = (byte) majorVersion;
-        frameData[4] = (byte) minorVersion;
-        frameData[5] = (byte) flag;
-        //(headerInfo[6] << 21) | (headerInfo[7] << 14) | (headerInfo[8] << 7) | headerInfo[9];
-        int sevenBitMask = 0x7f;
-        
-        /**
-         * Copy all frame objects to binary frame data
-         */
-        int index = 10;
-        for(Frame frame : frames) {
-            byte[] data = transformFrameToBytes(frame);
-            System.arraycopy(data, 0, frameData, index, data.length);
-            
-            index += data.length;
-        }
-        
-        int size = index - 10;
-        frameData[6] = (byte) ((size >>> 21 ) & sevenBitMask);
-        frameData[7] = (byte) ((size >>> 14 ) & sevenBitMask);
-        frameData[8] = (byte) ((size >>> 7 ) & sevenBitMask);
-        frameData[9] = (byte) ((size) & sevenBitMask);
+    public void pack() throws IOException {
+    	// Pack all frames if exists
+        byte[] frameData = packFrames();
         
         /**
          * Read original media data.
@@ -336,22 +301,26 @@ public class ID3Metadata {
             int mediaSize   = (int) file.length();
             int indexToRead = 0;
             
-            // If it contains id3 metadata then skip it
-            if(validID3Tag) {
-                indexToRead = this.size + 10;
-                stream.skip(indexToRead);
-                mediaSize -= indexToRead;
+			// If it contains id3 meta data then skip it
+            if(this.size > 0) {
+            	indexToRead = this.size + HEADER_SIZE;
+            	stream.skip(indexToRead);
             }
             
+			mediaSize -= indexToRead;
+
             mediaData = new byte[mediaSize];
             
             stream.read(mediaData, 0, mediaData.length);
         } catch(IOException e) {
-            System.out.println("com.codeforwin.id3.ID3Metadata.saveID3Metadata() READ - " + e.getMessage());
+        	IOException exception = new IOException("Unable to read media song data.");
+        	exception.setStackTrace(e.getStackTrace());
+        	
+        	throw exception;
         }
         
         /**
-         * Final write ID3 tag with media data.
+         * Final write ID3 tag with media song data.
          */
         try (FileOutputStream stream = new FileOutputStream(file)) {
             stream.write(frameData);
@@ -359,9 +328,111 @@ public class ID3Metadata {
             if (mediaData != null)
                 stream.write(mediaData);
         } catch (IOException e) {
-            System.out.println("com.codeforwin.id3.ID3Metadata.saveID3Metadata() WRITE");
+        	IOException exception = new IOException("Unable to write media file data to disk.");
+        	exception.setStackTrace(e.getStackTrace());
+        	
+        	throw exception;
         }
     }
+    
+    
+    /**
+     * Converts all frame data to binary format so that they can be 
+     * written to file. It returns an array of byte containing ID3 header
+     * information and frame data.
+     * @return Returns an array of byte.
+     */
+    private byte[] packFrames() {
+        /**
+         * Calculate the total size of frame
+         */
+        int totalFrameSize = 0;
+        for(Frame frame : frameList) {
+            // Frame data size + header size
+            totalFrameSize += frame.getSize() + HEADER_SIZE;
+        }
+        
+        /**
+         * Create a valid ID3 header tag
+         */
+        byte frameData[] = new byte[totalFrameSize + HEADER_SIZE];
+        
+        System.arraycopy(ID3_TAG_IDENTIFIER.getBytes(), 0, frameData, 0, 3);
+        frameData[3] = (byte) majorVersion;
+        frameData[4] = (byte) minorVersion;
+        frameData[5] = (byte) flag;
+        
+        
+        /**
+         * Copy all frame objects to binary frame data
+         */
+        int index = HEADER_SIZE;
+        for(Frame frame : frameList) {
+            byte[] data = frame.pack();
+            System.arraycopy(data, 0, frameData, index, data.length);
+            
+            index += data.length;
+        }
+        
+        /**
+         * Encode the new ID3 size
+         */
+        int newID3Size 	= index - HEADER_SIZE;
+        byte[] sizeData = packInteger(newID3Size);
+        frameData[6] 	= sizeData[0];
+        frameData[7] 	= sizeData[1];
+        frameData[8] 	= sizeData[2];
+        frameData[9] 	= sizeData[3];
+        
+        return frameData;
+    }
+    
+    
+    /**
+     * Removes the ID3 tag from media song.
+     * @throws IOException
+     */
+    public void removeID3Tag() throws IOException {
+        /**
+         * Read original media data
+         */
+        byte mediaData[] = null;
+        try(FileInputStream stream = new FileInputStream(file)) {
+            int mediaSize   = (int) file.length();
+            int indexToRead = 0;
+            
+			// If it contains id3 meta data then skip it
+            if(this.size > 0) {
+            	indexToRead = this.size + HEADER_SIZE;
+            	stream.skip(indexToRead);
+            }
+            
+			mediaSize -= indexToRead;
+
+            mediaData = new byte[mediaSize];
+            
+            stream.read(mediaData, 0, mediaData.length);
+        } catch(IOException e) {
+        	IOException exception = new IOException("Unable to read media song data.");
+        	exception.setStackTrace(e.getStackTrace());
+        	
+        	throw exception;
+        }
+        
+        /**
+         * Write media song data.
+         */
+        try (FileOutputStream stream = new FileOutputStream(file)) {
+            if (mediaData != null)
+                stream.write(mediaData);
+        } catch (IOException e) {
+        	IOException exception = new IOException("Unable to write media file data to disk.");
+        	exception.setStackTrace(e.getStackTrace());
+        	
+        	throw exception;
+        }
+    }
+    
     
     /**
      * Replaces an ID3 frame with another ID3 frame.
@@ -371,10 +442,11 @@ public class ID3Metadata {
     public void replaceFrame(Frame toReplace, Frame replaceWith) {
         // Null checks
         if(toReplace != null && replaceWith != null) {
-            frames.remove(toReplace);
-            frames.add(replaceWith);
+            frameList.remove(toReplace);
+            frameList.add(replaceWith);
         }
     }
+    
     
     /**
      * Replaces a ID3 frame with another frame. In case there exists more than 
@@ -389,19 +461,21 @@ public class ID3Metadata {
         if(frame != null ) {
             ArrayList<Frame> framesToRemove = new ArrayList<>();
             
-            for(Frame f : frames) {
-                if(f.getFrameID().equals(frameID)) {
-                    framesToRemove.add(f);
-                }
-            }
+            frameList.forEach((f)-> { 
+            	if(f.getFrameID().equals(frameID)) {
+            		framesToRemove.add(f);
+            	}
+            });
             
+            // Removes all frame with the given frame ID
             if(framesToRemove.size() >= 1)
-                frames.removeAll(framesToRemove);
+                frameList.removeAll(framesToRemove);
             
             // Add the new frame
-            frames.add(frame);
+            frameList.add(frame);
         }
     }
+
     
     /**
      * Checks whether the current ID3 tag contains a frame or not. A frame 
@@ -413,22 +487,50 @@ public class ID3Metadata {
     public boolean contains(Frame frame) {
         boolean exists = false;
         
-        // If frames have not been parsed
-        getAllFrames();
-        
-        // Check for valid ID3 tag
-        if(frames != null) {
-            for(Frame f : frames) {
-                if(f.equals(frame)) {
-                    exists = true;
-                    break;
-                }
-            }
+        try {
+        	getAllFrames();
+        } catch (IOException e) {
+        	return false;
         }
+
+		// Check for valid ID3 tag
+		for (Frame f : frameList) {
+			if (f.equals(frame)) {
+				exists = true;
+				break;
+			}
+		}
         
         return exists;
     }
+    
 
+    /**
+     * Checks whether the current ID3 tag contains the given frame or not. 
+     * @param frameID Unique frame ID.
+     * @return True if the current ID3 tag contains the given frame otherwise 
+     * false.
+     */
+    public boolean contains(String frameID) {
+        boolean exists = false;
+        
+        try {
+        	getAllFrames();
+        } catch (IOException e) {
+        	return false;
+        }
+
+		// Check for valid ID3 tag
+		for (Frame f : frameList) {
+			if (f.getFrameID().equals(frameID)) {
+				exists = true;
+				break;
+			}
+		}
+        
+        return exists;
+    }
+    
     
     /**
      * Gets, the major version associated with the ID3 tag. If the current 
@@ -462,14 +564,6 @@ public class ID3Metadata {
      */
     public int getSize() {
         return size;
-    }
-
-    /**
-     * Returns true if the current media file contains a valid ID3 metadata tag.
-     * @return True if media contains ID3 tag otherwise false.
-     */
-    public boolean isValidID3Tag() {
-        return validID3Tag;
     }
 
     /**
@@ -514,40 +608,5 @@ public class ID3Metadata {
      * Reads, the extended header information if exists.
      */
     private void readExtendedHeader() {
-        
-    }
-    
-    /**
-     * Converts the frame information to binary format so that it can be 
-     * written to the file.
-     * @param frame Frame to be transformed to bytes.
-     * @return Array of bytes representing the frame data
-     */
-    private byte[] transformFrameToBytes(Frame frame) {
-        byte frameData[] = new byte[frame.getSize() + 10];
-        
-        String frameID  = frame.getFrameID();
-        int frameSize   = frame.getSize();
-        int flag1       = frame.getFlag1();
-        int flag2       = frame.getFlag2();
-        
-        // Copy frame ID to the binary frame data
-        System.arraycopy(frameID.getBytes(), 0, frameData, 0, 4);
-        
-        // Copy size to binary frame data
-        ByteBuffer buffer = ByteBuffer.allocate(4);
-        buffer.putInt(frameSize);
-        System.arraycopy(buffer.array(), 0, frameData, 4, 4);
-        
-        // Copy first flag to binary frame data
-        frameData[8] = (byte) flag1;
-        
-        // Copy the second flag to binary frame data
-        frameData[9] = (byte) flag2;
-        
-        // Copy frame data
-        System.arraycopy(frame.data, 0, frameData, 10, frame.size);
-        
-        return frameData;
     }
 }

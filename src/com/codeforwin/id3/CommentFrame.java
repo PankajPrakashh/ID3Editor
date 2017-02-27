@@ -17,7 +17,6 @@
 
 package com.codeforwin.id3;
 
-import java.io.UnsupportedEncodingException;
 import static com.codeforwin.id3.ID3.*;
 
 /**

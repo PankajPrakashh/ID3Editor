@@ -18,7 +18,10 @@ package com.codeforwin.test;
 
 import com.codeforwin.id3.Frame;
 import com.codeforwin.id3.ID3Metadata;
+import com.codeforwin.id3.ImageFrame;
 import com.codeforwin.id3.MediaMetadata;
+import com.codeforwin.id3.TextFrame;
+
 import java.awt.Graphics2D;
 import java.awt.Image;
 import java.awt.image.BufferedImage;
@@ -36,7 +39,14 @@ public class Test {
     
     public static void main(String[] args) {
         
-        MediaMetadata id3 = new MediaMetadata(new File("src\\com\\codeforwin\\test\\data\\2.mp3"));
+        MediaMetadata id3;
+        
+        try {
+        	id3 = new MediaMetadata(new File("src\\com\\codeforwin\\test\\data\\2.mp3"));
+        } catch (IOException e) {
+        	System.out.println(e);
+        	return;
+        }
         
         System.out.println("Album name : "+id3.getAlbumName());
         System.out.println("Album artist: " + id3.getAlbumArtists());
@@ -47,7 +57,8 @@ public class Test {
         System.out.println("Copyright : "+id3.getCopyright());
         System.out.println("Copyright Information : " + id3.getCopyrightInformation());
         System.out.println("Encoded by : " + id3.getEncodedBy());
-        System.out.println("Image Type : " + id3.getImageFrame().getPictureType());
+        ImageFrame frame = id3.getImageFrame();
+        System.out.println("Image Type : " + id3.getImageFrame().getAlbumArtType());
         System.out.println("Internet Radio Station : " + id3.getInternetRadioStationName());
         System.out.println("Internet Radio Station Owner : " + id3.getInternetRadioStationOwner());
         System.out.println("Lead Performer : " + id3.getLeadPerformer());
@@ -77,7 +88,7 @@ public class Test {
         System.out.println("Year : " + id3.getYear());
     }
     
-    public static void main1(String[] args) {
+    public static void main1(String[] args) throws IOException {
         //7,170,840 bytes
         int i=11;
         if(i==1){
@@ -86,7 +97,6 @@ public class Test {
         }
         ID3Metadata meta = ID3Metadata.parseMedia(new File("test\\data\\[Songs.PK] Bhaag Milkha Bhaag - 03 - Mera Yaar.mp3"));
         
-        System.out.println(meta.isValidID3Tag());
         System.out.println(meta.getMajorVersion());
         System.out.println(meta.getMinorVersion());
         System.out.println(meta.getSize() + " bytes");
@@ -95,10 +105,10 @@ public class Test {
             if(frame.getFrameID().equals("APIC"))
                 System.out.println(frame.getFrameID() + " -- " + frame.getSize());
             else
-                System.out.println(frame.getFrameID() + " -- " + frame.getSize() + " -- " +frame.getString());
+                System.out.println(frame.getFrameID() + " -- " + frame.getSize() + " -- " +((TextFrame)frame).getTextData());
         }
         
-        meta.saveID3Metadata();
+        meta.pack();
     }
     
     public static void check() {
@@ -119,7 +129,8 @@ public class Test {
         }
     }
 
-    private static void saveAlbumImage(BufferedImage image) {
+    @SuppressWarnings("unused")
+	private static void saveAlbumImage(BufferedImage image) {
         String fileName = "test\\data\\albumImage.jpg";
         File file = new File(fileName);
         try {

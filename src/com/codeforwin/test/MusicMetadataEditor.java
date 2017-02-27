@@ -16,6 +16,17 @@
  */
 package com.codeforwin.test;
 
+import java.awt.Graphics2D;
+import java.awt.Image;
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.io.IOException;
+
+import javax.swing.ImageIcon;
+
+import com.codeforwin.id3.ImageFrame;
+import com.codeforwin.id3.MediaMetadata;
+
 /**
  *
  * @author Pankaj Prakash
@@ -27,6 +38,44 @@ public class MusicMetadataEditor extends javax.swing.JFrame {
      */
     public MusicMetadataEditor() {
         initComponents();
+        MediaMetadata id3;
+        
+        try {
+        	id3 = new MediaMetadata(new File("src\\com\\codeforwin\\test\\data\\1.mp3"));
+        } catch (IOException e) {
+        	System.out.println(e);
+        	return;
+        }
+        
+        ImageFrame frame = id3.getImageFrame();
+        Image img = frame.getAlbumArt();
+        BufferedImage bf = toBufferedImage(img);
+        img = bf.getScaledInstance(200, 200, Image.SCALE_SMOOTH);
+        jLabel1.setIcon(new ImageIcon(img));
+        
+    }
+    
+    /**
+     * Converts a given Image into a BufferedImage
+     *
+     * @param img The Image to be converted
+     * @return The converted BufferedImage
+     */
+    public static BufferedImage toBufferedImage(Image img) {
+        if (img instanceof BufferedImage) {
+            return (BufferedImage) img;
+        }
+
+        // Create a buffered image with transparency
+        BufferedImage bimage = new BufferedImage(img.getWidth(null), img.getHeight(null), BufferedImage.TYPE_INT_ARGB);
+
+        // Draw the image on to the buffered image
+        Graphics2D bGr = bimage.createGraphics();
+        bGr.drawImage(img, 0, 0, null);
+        bGr.dispose();
+
+        // Return the buffered image
+        return bimage;
     }
 
     /**

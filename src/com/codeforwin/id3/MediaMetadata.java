@@ -17,21 +17,20 @@
 package com.codeforwin.id3;
 
 import java.io.File;
-import java.io.UnsupportedEncodingException;
+import java.io.IOException;
 import java.util.Date;
 
 /**
  *
  * @author Pankaj Prakash
+ * @version 0.9
  */
 public class MediaMetadata {
-    
-    /// <editor-fold defaultstate="collapsed" desc="Global variable declarations">
     
     /**
      * <b>APIC</b> tag - Attached picture with the media. 
      */
-    private FrameAPIC imageFrame;
+    private ImageFrame imageFrame;
     
     /**
      * <b>COMM</b> tag - Comments associated with the media.
@@ -214,18 +213,15 @@ public class MediaMetadata {
     private String officialPublisherWebpage;
     
     
-    /// </editor-fold>
-    
-    
     private File musicFile  = null;
     private ID3Metadata id3 = null;
     
     
-    
-    public MediaMetadata(File musicFile) {
+    public MediaMetadata(File musicFile) throws IOException {
         this.musicFile = musicFile;
-        
-        id3 = ID3Metadata.parseMedia(musicFile);
+
+		id3 = ID3Metadata.parseMedia(musicFile);
+
         if(id3 == null) 
             id3 = new ID3Metadata(musicFile);
         
@@ -244,7 +240,13 @@ public class MediaMetadata {
             id3 = new ID3Metadata(musicFile);
         }
 
-        Frame frames[] = id3.getAllFrames();
+        Frame frames[] = null;
+        
+        try {
+        	frames = id3.getAllFrames();
+        } catch (IOException e) {
+        	return;
+        }
 
         // If the media contains metadata
         if (frames.length < 1) {
@@ -255,33 +257,16 @@ public class MediaMetadata {
         for (Frame frame : frames) {
             switch (frame.getFrameID()) {
                 case "APIC":
-                    imageFrame = frame.getImageFrame();
+                    imageFrame = (ImageFrame)frame;
                     break;
 
                 case "COMM":
-                    /**
-                     * Text encoding           $xx
-                     * Language                $xx xx xx
-                     * Short content descrip.  text string according to encoding $00 (00)
-                     * The actual text         full text string according to encoding
-                     */
-                    byte[] data = frame.getBytes();
-                    
-                    String language = "";
-                    try {
-                        language = new String(data, 1, 3, frame.encoding);
-                        
-                        String comm = new String(data, 4, data.length - 4, frame.encoding);
-                        
-                        if(comment == null)
-                            comment = comm;
-                        else
-                            comment += "\\\\" + comm.trim();
-                        
-                    } catch(UnsupportedEncodingException e) {
-                        System.out.println("com.codeforwin.id3.MediaMetadata.getAllMetadata()");
-                    }
-                    
+    				CommentFrame commFrame = (CommentFrame) frame;
+
+    				if (comment == null)
+    					comment = commFrame.getComment();
+    				else
+    					comment += "\\\\" + commFrame.getComment();
                     break;
 
                 case "POPM":
@@ -289,22 +274,22 @@ public class MediaMetadata {
                     break;
 
                 case "TALB":
-                    albumName = frame.getString();
+                    albumName = ((TextFrame)frame).getTextData();
                     break;
 
                 case "TCOM":
-                    composer = frame.getString();
+                    composer = ((TextFrame)frame).getTextData();
                     break;
 
                 case "TCON":
-                    genre = frame.getString();
+                    genre = ((TextFrame)frame).getTextData();
                     
                     if(genre.matches("\0\\(\\d\\)")) {
                         try {
                             genre = genre.replaceAll("[\0\\(\\)]", "");
                             int index = Integer.parseInt(genre);
 
-                            genre = GenreList.GENRES[index];
+                            genre = ID3.GENRES[index];
                         } catch (Exception e) {
                             System.out.println("com.codeforwin.id3.MediaMetadata.getAllMetadata()");
                         }
@@ -312,14 +297,15 @@ public class MediaMetadata {
                     break;
 
                 case "TCOP":
-                    copyright = frame.getString();
+                    copyright = ((TextFrame)frame).getTextData();
                     break;
 
                 case "TYER":
+                	String yr = ((TextFrame)frame).getTextData();
                     try {
-                        year = Integer.parseInt(frame.getString());
+                        year = Integer.parseInt(yr);
                     } catch (NumberFormatException e) {
-                        year = Integer.parseInt(frame.getString().replace("\0", ""));
+                        year = Integer.parseInt(yr.replace("\0", ""));
                     }
                     break;
 
@@ -328,118 +314,127 @@ public class MediaMetadata {
                     break;
 
                 case "TENC": //Media data encoded by.
-                    encodedBy = frame.getString();
+                    encodedBy = ((TextFrame)frame).getTextData();
                     break;
 
                 case "TEXT": //Lyricists/writer of the media.
-                    lyricist = frame.getString();
+                    lyricist = ((TextFrame)frame).getTextData();
                     break;
 
                 case "TIT2": //Name of the song or content description.
-                    songName = frame.getString();
+                    songName = ((TextFrame)frame).getTextData();
                     break;
 
                 case "TIT3": //Sub albumName of the song.
-                    subTitle = frame.getString();
+                    subTitle = ((TextFrame)frame).getTextData();
                     break;
 
                 case "TLEN": //Length of the media in minutes.
-                    System.out.println("com.codeforwin.id3.MediaMetadata.getAllMetadata()");
-                    length = Integer.parseInt(frame.getString());
+                	String len = ((TextFrame)frame).getTextData();
+                    try {
+                        length = Integer.parseInt(len);
+                    } catch (NumberFormatException e) {
+                        length = Integer.parseInt(len.replace("\0", ""));
+                    }
                     break;
 
                 case "TMED": //Type of the media.
-                    mediaType = frame.getString();
+                    mediaType = ((TextFrame)frame).getTextData();
                     break;
 
                 case "TOAL": //Original albumName of the media.
-                    originalTitle = frame.getString();
+                    originalTitle = ((TextFrame)frame).getTextData();
                     break;
 
                 case "TOFN": //Original name of the file.
-                    originalFileName = frame.getString();
+                    originalFileName = ((TextFrame)frame).getTextData();
                     break;
 
                 case "TOLY": //Original name of the lyricists.
-                    originalLyricist = frame.getString();
+                    originalLyricist = ((TextFrame)frame).getTextData();
                     break;
 
                 case "TOPE": //Original name of the media artist.
-                    originalArtist = frame.getString();
+                    originalArtist = ((TextFrame)frame).getTextData();
                     break;
 
                 case "TDOR": //Original release year of the media.
-                    originalReleaseYear = frame.getInt();
+                	String ory = ((TextFrame)frame).getTextData();
+                    try {
+                        originalReleaseYear = Integer.parseInt(ory);
+                    } catch (NumberFormatException e) {
+                        originalReleaseYear = Integer.parseInt(ory.replace("\0", ""));
+                    }
                     break;
 
                 case "TPE1": //Lead performers/Soloists of the song.
-                    leadPerformer = frame.getString();
+                    leadPerformer = ((TextFrame)frame).getTextData();
                     break;
 
                 case "TPE2": //Band/Orchestra of the song.
-                    albumArtists = frame.getString();
+                    albumArtists = ((TextFrame)frame).getTextData();
                     break;
 
                 case "TPE3": //Conductor of the media song.
-                    songConductor = frame.getString();
+                    songConductor = ((TextFrame)frame).getTextData();
                     break;
 
                 case "TPUB": //Publisher of the song.
-                    publisher = frame.getString();
+                    publisher = ((TextFrame)frame).getTextData();
                     break;
 
                 case "TRCK": //Track number of current song in album.
+                	String trck = ((TextFrame)frame).getTextData();
                     try {
-                        trackNumber = Integer.parseInt(frame.getString());
+                        trackNumber = Integer.parseInt(trck);
                     } catch (NumberFormatException e) {
-                        String dataString = frame.getString();
-                        if(dataString.contains("/"))
-                            dataString = dataString.substring(0, dataString.indexOf("/"));
+                        if(trck.contains("/"))
+                            trck = trck.substring(0, trck.indexOf("/"));
                         
-                        dataString = dataString.replace("\0", "");
+                        trck = trck.replace("\0", "");
                         
-                        trackNumber = Integer.parseInt(dataString);
+                        trackNumber = Integer.parseInt(trck);
                     }
                     break;
 
                 case "TRSN": //Internet radio station name of the media song.
-                    internetRadioStationName = frame.getString();
+                    internetRadioStationName = ((TextFrame)frame).getTextData();
                     break;
 
                 case "TRSO": //Internet radio station owner name of the media song.
-                    internetRadioStationOwner = frame.getString();
+                    internetRadioStationOwner = ((TextFrame)frame).getTextData();
                     break;
 
                 case "UFID": //Unique file identifier of the media file.
-                    ufid = frame.getString();
+                    ufid = ((TextFrame)frame).getTextData();
                     break;
 
                 case "WCOM": //Commercial information of the media song.
-                    commercialInformation = frame.getString();
+                    commercialInformation = ((TextFrame)frame).getTextData();
                     break;
 
                 case "WCOP": //Additional copyright information of media song.
-                    copyrightInformation = frame.getString();
+                    copyrightInformation = ((TextFrame)frame).getTextData();
                     break;
 
                 case "WOAF": //Official webpage of the audio file.
-                    officialAudioWebpage = frame.getString();
+                    officialAudioWebpage = ((TextFrame)frame).getTextData();
                     break;
 
                 case "WOAR": //Official webpage of the artist/performer.
-                    officialArtistWebpage = frame.getString();
+                    officialArtistWebpage = ((TextFrame)frame).getTextData();
                     break;
 
                 case "WOAS": //Official webpage of the audio source.
-                    officialAudioSourceWebpage = frame.getString();
+                    officialAudioSourceWebpage = ((TextFrame)frame).getTextData();
                     break;
 
                 case "WORS": //Official homepage of the internet radio station homepage.
-                    officialInternetRadioStationHomepage = frame.getString();
+                    officialInternetRadioStationHomepage = ((TextFrame)frame).getTextData();
                     break;
 
                 case "WPUB": //Official web page of the media song publisher.
-                    officialPublisherWebpage = frame.getString();
+                    officialPublisherWebpage = ((TextFrame)frame).getTextData();
                     break;
                     
                 default:
@@ -448,11 +443,9 @@ public class MediaMetadata {
             } // End of switch
         } // End of for
     }
-    
-    
-    /// <editor-fold defaultstate="collapsed" desc="Getters and Setters">
 
-    public FrameAPIC getImageFrame() {
+
+    public ImageFrame getImageFrame() {
         return imageFrame;
     }
 
@@ -603,6 +596,4 @@ public class MediaMetadata {
     public int getYear() {
         return year;
     }
-    
-    /// </editor-fold>
 }

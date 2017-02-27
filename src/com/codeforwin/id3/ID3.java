@@ -3,6 +3,16 @@
  */
 package com.codeforwin.id3;
 
+import java.awt.Image;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.UnsupportedEncodingException;
+import java.nio.ByteBuffer;
+
+import javax.imageio.ImageIO;
+
 /**
  * This class defines all ID3 frames, list of genres, ID3 integer packing methods and other constants.
  * 
@@ -14,18 +24,23 @@ public class ID3 {
 	private ID3() { }
 
 	// ID3 character encodings
-    public final static String ENCODING_ASCII       = "ISO-8859-1";
-    public final static String ENCODING_UTF8        = "UTF-8";
-    public final static String ENCODING_UTF16       = "UTF-16";
-    public final static String ENCODING_UTF16BE     = "UTF-16BE";
-    public final static String ENCODING_UTF16LE     = "UTF-16LE";
+    public final static String 	ENCODING_ISO_8859_1		= "ISO-8859-1";
+    public final static String 	ENCODING_UTF8        	= "UTF-8";
+    public final static String 	ENCODING_UTF16       	= "UTF-16";
+    public final static String 	ENCODING_UTF16BE     	= "UTF-16BE";
+    public final static String 	ENCODING_UTF16LE     	= "UTF-16LE";
     
-    public final static int    FLAG_UNSYNCRONIZATION= 0x80; // 10000000
-    public final static int    FLAG_EXTENDED_HEADER = 0x40; // 01000000
-    public final static int    FLAG_EXPERIMENTAL    = 0x20; // 00100000
+    public final static int    	FLAG_UNSYNCRONIZATION	= 0x80; // 10000000
+    public final static int    	FLAG_EXTENDED_HEADER 	= 0x40; // 01000000
+    public final static int    	FLAG_EXPERIMENTAL    	= 0x20; // 00100000
     
-    public final static String ID3_IDENTIFIER       = "ID3";
+    public final static String 	ID3_TAG_IDENTIFIER		= "ID3";
+    
+    public final static int		SEVEN_BIT_MASK			= 0x7f; 
+    
+    public final static int		HEADER_SIZE				= 0xa; // 10
 	
+    
 	public final static String[] STANDARD_FRAMES = new String[] { 
 			"AENC", "APIC", "ASPI", "COMM", "COMR", "TSIZ", "ENCR", "EQUA", "EQU2", "ETCO", "GEOB", "GRID", "LINK", 
 			"MCDI", "MLLT", "OWNE", "PCNT", "POPM", "POSS", "PRIV", "RBUF", "RVAD", "RVA2", "RVRB", "SEEK", "SIGN", 
@@ -75,7 +90,7 @@ public class ID3 {
 	/**
 	 * Types of images stored in APIC frame
 	 */
-	public final static String[] ApicType = new String[] {
+	public final static String[] ALBUM_ART_TYPE = new String[] {
 			"OTHER", 						"FILE_ICON",			"OTHER_FILE_ICON", 	"COVER_FRONT", 	
 			"COVER_BACK",					"LEAFLET_PAGE",			"MEDIA",			"LEAD_ARTIST",
 			"ARTIST",						"CONDUCTOR",			"BAND",				"COMPOSER",
@@ -86,22 +101,170 @@ public class ID3 {
 	
 	
 	/**
+	 * Converts an integer to four bytes array using ID3 size packing specification. 
+	 * Size : 4 * %0xxxxxxx
 	 * 
-	 * @param value
-	 * @return
+	 * @param value Integer to be converted.
+	 * @return Returns four byte array.
 	 */
-	public byte[] packInteger(int value) {
-		return null;
+	public static byte[] packInteger(int value) {
+		byte[] frameData = new byte[4];
+		
+		frameData[0] = (byte) ((value >>> 21 ) & SEVEN_BIT_MASK);
+        frameData[1] = (byte) ((value >>> 14 ) & SEVEN_BIT_MASK);
+        frameData[2] = (byte) ((value >>> 7  ) & SEVEN_BIT_MASK);
+        frameData[3] = (byte) ((value		 ) & SEVEN_BIT_MASK);
+		
+        return frameData;
 	}
 	
 	/**
-	 * 
-	 * @param value
-	 * @return
+	 * Convert four byte array to integer using ID3 size packing specification.
+	 * @param value Array of bytes of size four
+	 * @return Returns the converted integer.
 	 */
-	public int unpackInteger(byte[] bytes) {
+	public static int unpackInteger(byte[] bytes) {
 		int value = (bytes[0] << 21) | (bytes[1] << 14) | (bytes[2] << 7) | bytes[3];
 		
 		return value;
+	}
+	
+	
+	/**
+	 * Converts a 4 byte sized array to integer. 
+	 * @param bytes byte array of size 4.
+	 * @return Returns an integer representation of bytes
+	 */
+	public static int getInteger(byte[] bytes) {
+		if(bytes.length != 4)
+			throw new IllegalArgumentException("Bytes array must be of length 4.");
+		
+		return ByteBuffer.wrap(bytes, 0, bytes.length).getInt();
+	}
+	
+	
+	/**
+	 * Converts bytes array to 4 byte integer format.
+	 * @param bytes Array of bytes to be converted.
+	 * @param startIndex Starting index from where the integer bytes starts.
+	 * @return Returns an 4 byte integer.
+	 */
+	public static int getInteger(byte[] bytes, int startIndex) {
+		if(bytes.length - startIndex < 4)
+			throw new IllegalArgumentException("Bytes array must be atleast 4 byte long.");
+		
+		return ByteBuffer.wrap(bytes, startIndex, 4).getInt();
+	}
+	
+	
+	/**
+	 * Converts the given byte array to string using specified encoding.
+	 * @param bytes Array of bytes containing string.
+	 * @param encoding Encoding in which string needs to be decoded.
+	 * @return Returns the converted string. In case encoding is not correct
+	 * returns null.
+	 */
+	public static String getString(byte[] bytes, String encoding) {
+		try {
+			return new String(bytes, 0, bytes.length, encoding);
+		} catch (UnsupportedEncodingException ex) {
+			return null;
+		}
+	}
+	
+	
+	/**
+	 * Converts the given byte array to string using specified encoding.
+	 * @param bytes Array of byte containing string.
+	 * @param start Starting position of the string in byte array.
+	 * @param length Length of string in byte array.
+	 * @param encoding Encoding in which string needs to be decoded.
+	 * @return Returns the converted string. In case encoding is not correct
+	 * returns null.
+	 */
+	public static String getString(byte[] bytes, int start, int length, String encoding) {
+		try {
+			return new String(bytes, start, length, encoding);
+		} catch (UnsupportedEncodingException ex) {
+			return null;
+		}
+	}
+	
+	
+	/**
+	 * Converts the given byte array to Image.
+	 * @param imageData Array of byte containing image binary data
+	 * @return Returns the Image on success otherwise returns null.
+	 */
+	public static Image getImage(byte[] imageData) {
+        BufferedImage img = null;
+        
+        try(ByteArrayInputStream stream = new ByteArrayInputStream(imageData)) {
+            img  = ImageIO.read(stream);
+        } catch (IOException e) {
+        	return null;
+		}
+        
+        return ((Image)img);
+	}
+	
+	
+	/**
+	 * Converts string to bytes.
+	 * @param str String to be converted to bytes
+	 * @param encoding Encoding in which string is to be encoded.
+	 * @return Bytes representation of string.
+	 */
+	public static byte[] getBytes(String str, String encoding) {
+		try {
+			return str.getBytes(encoding);
+		} catch (UnsupportedEncodingException ex) {
+			return str.getBytes();
+		}
+	}
+	
+	
+	/**
+	 * Converts integer to bytes.
+	 * @param number Integer to be converted to bytes
+	 * @return Bytes representation of integer
+	 */
+	public static byte[] getBytes(int number) {
+		ByteBuffer buffer = ByteBuffer.allocate(Integer.BYTES);
+		buffer.putInt(number);
+		
+		return buffer.array();
+	}
+	
+	
+	/**
+	 * Converts short to bytes.
+	 * @param number Short to be converted to bytes
+	 * @return Bytes representation of short
+	 */
+	public static byte[] getBytes(short number) {
+		ByteBuffer buffer = ByteBuffer.allocate(Short.BYTES);
+		buffer.putShort(number);
+		
+		return buffer.array();
+	}
+	
+	
+	/**
+	 * Converts Image to bytes.
+	 * @param image Image to be converted to bytes
+	 * @return Bytes representation of Image
+	 */
+	public static byte[] getBytes(Image image) {
+        BufferedImage img = (BufferedImage) image;
+        
+        ByteArrayOutputStream boas = new ByteArrayOutputStream();
+        try {
+			ImageIO.write(img, "jpg", boas);
+		} catch (IOException e) {
+			return null;
+		}
+        
+        return boas.toByteArray();
 	}
 }
